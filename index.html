@@ -5,6 +5,7 @@
     <meta charset="UTF-8" />
     <title>Flood Fill Visualizer</title>
     <style>
+        /* Basic page styles */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #1e1e2f;
@@ -30,6 +31,7 @@
             margin: 10px 0;
         }
 
+        /* Button styling */
         button {
             padding: 8px 16px;
             font-size: 15px;
@@ -46,6 +48,7 @@
             background: #6e80ff;
         }
 
+        /* Grid container styling */
         #grid {
             display: grid;
             gap: 2px;
@@ -55,6 +58,7 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
         }
 
+        /* Individual cell styling */
         .cell {
             width: 100%;
             aspect-ratio: 1 / 1;
@@ -64,11 +68,13 @@
             transition: transform 0.1s;
         }
 
+        /* Animation class for the active cell */
         .cell.active {
             outline: 2px solid #fff;
             animation: pulse 0.4s ease-out;
         }
 
+        /* Pulse animation for the flood fill head */
         @keyframes pulse {
             0% {
                 transform: scale(1);
@@ -86,7 +92,7 @@
             }
         }
 
-
+        /* Hover scaling for a subtle interactive feel */
         .cell:hover {
             transform: scale(1.05);
         }
@@ -102,16 +108,23 @@
     <div id="grid"></div>
 
     <script type="module">
+        // Import the WebAssembly module and exposed Rust function
         import init, { compute_smart_fill } from "./pkg/flood_fill.js";
 
+        // Track whether WASM has been initialized
         let initialized = false;
 
+        /**
+         * Main function to create or reset the grid
+         */
         async function run() {
+            // Initialize the WASM module only once
             if (!initialized) {
                 await init();
                 initialized = true;
             }
 
+            // Determine grid size dynamically based on window size
             const cellSize = 28;
             const margin = 4;
             const availableWidth = window.innerWidth - margin;
@@ -119,16 +132,18 @@
 
             const width = Math.floor(availableWidth / (cellSize + 2));
             const height = Math.floor(availableHeight / (cellSize + 2));
-
             const gridSize = width * height;
 
+            // Initialize grid data (-1 means uninitialized)
             const grid = new Int8Array(gridSize);
             grid.fill(-1);
 
+            // Define the four directions to expand cells
             const directions = [
                 [-1, 0], [1, 0], [0, -1], [0, 1]
             ];
 
+            // Start a blob in a random location
             const startX = Math.floor(Math.random() * width);
             const startY = Math.floor(Math.random() * height);
             let currentColor = Math.floor(Math.random() * 3);
@@ -137,6 +152,7 @@
             queue.push([startX, startY]);
             grid[startY * width + startX] = currentColor;
 
+            // Grow colored blobs throughout the grid
             while (queue.length > 0) {
                 const [x, y] = queue.shift();
                 for (const [dx, dy] of directions) {
@@ -146,8 +162,10 @@
                         const nIdx = ny * width + nx;
                         if (grid[nIdx] === -1) {
                             if (Math.random() < 0.7) {
+                                // Continue the same color
                                 grid[nIdx] = grid[y * width + x];
                             } else {
+                                // Start a new color, different from current
                                 let newColor;
                                 do {
                                     newColor = Math.floor(Math.random() * 3);
@@ -160,13 +178,15 @@
                 }
             }
 
+            // Clear the previous grid element to avoid duplicate event listeners
             const oldGrid = document.getElementById("grid");
             const gridElement = oldGrid.cloneNode(false);
             oldGrid.parentNode.replaceChild(gridElement, oldGrid);
 
+            // Set grid template columns dynamically
             gridElement.style.gridTemplateColumns = `repeat(${width}, ${cellSize}px)`;
 
-            // Create cells
+            // Create all cell divs
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
                     const div = document.createElement("div");
@@ -177,9 +197,12 @@
                 }
             }
 
-            // Vibrant colors
+            // Color palette for the cells
             const colors = ["#ff4d4d", "#4dff88", "#4da6ff", "#ffff66"];
 
+            /**
+             * Renders the entire grid based on the grid state
+             */
             function render() {
                 const cells = gridElement.children;
                 for (let i = 0; i < gridSize; i++) {
@@ -188,16 +211,23 @@
                 }
             }
 
+            // Perform the initial render
             render();
 
+            /**
+             * Attach click handler to start the flood fill animation
+             */
             gridElement.addEventListener("click", (e) => {
                 const target = e.target;
                 if (!target.classList.contains("cell")) return;
-
+                
                 const x = parseInt(target.dataset.x);
                 const y = parseInt(target.dataset.y);
 
+                // Compute the sequence of cells to fill from WASM
                 const positions = compute_smart_fill(grid, width, height, x, y);
+
+                // Convert flat array to array of [x, y] pairs
                 const coords = [];
                 for (let i = 0; i < positions.length; i += 2) {
                     coords.push([positions[i], positions[i + 1]]);
@@ -206,6 +236,9 @@
                 let step = 0;
                 let previousActive = null;
 
+                /**
+                 * Animate the flood fill step by step
+                 */
                 function animate() {
                     if (step >= coords.length) return;
 
@@ -216,12 +249,12 @@
                     const index = cy * width + cx;
                     const cells = gridElement.children;
 
-                    // Remove active class from previous cell
+                    // Remove .active class from previous cell
                     if (previousActive !== null) {
                         cells[previousActive].classList.remove("active");
                     }
 
-                    // Add active class to current cell
+                    // Add .active class to current cell for pulse animation
                     cells[index].classList.add("active");
                     previousActive = index;
 
@@ -233,8 +266,10 @@
             });
         }
 
+        // Initialize grid on page load
         run();
 
+        // Attach reset button handler
         document.getElementById("resetButton").addEventListener("click", () => {
             run();
         });
