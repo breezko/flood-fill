@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Flood Fill Visualizer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e2f;
+            color: #eee;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin-top: 20px;
+            font-weight: 500;
+        }
+
+        p {
+            margin-top: 0;
+            font-weight: 300;
+        }
+
+        #controls {
+            margin: 10px 0;
+        }
+
+        button {
+            padding: 8px 16px;
+            font-size: 15px;
+            border: none;
+            border-radius: 4px;
+            background: #4e60ff;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #6e80ff;
+        }
+
+        #grid {
+            display: grid;
+            gap: 2px;
+            background: #333;
+            border-radius: 8px;
+            padding: 2px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+        }
+
+        .cell {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: #444;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: transform 0.1s;
+        }
+
+        .cell.active {
+            outline: 2px solid #fff;
+            animation: pulse 0.4s ease-out;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                filter: brightness(1.4);
+            }
+
+            50% {
+                transform: scale(1.3);
+                filter: brightness(2);
+            }
+
+            100% {
+                transform: scale(1);
+                filter: brightness(1.4);
+            }
+        }
+
+
+        .cell:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🎨 Flood Fill Visualizer</h1>
+    <p>Click a cell to start flooding with yellow. Bigger islands eat smaller ones.</p>
+    <div id="controls">
+        <button id="resetButton">Reset Grid</button>
+    </div>
+    <div id="grid"></div>
+
+    <script type="module">
+        import init, { compute_smart_fill } from "./pkg/flood_fill.js";
+
+        let initialized = false;
+
+        async function run() {
+            if (!initialized) {
+                await init();
+                initialized = true;
+            }
+
+            const cellSize = 28;
+            const margin = 4;
+            const availableWidth = window.innerWidth - margin;
+            const availableHeight = window.innerHeight - margin - 180;
+
+            const width = Math.floor(availableWidth / (cellSize + 2));
+            const height = Math.floor(availableHeight / (cellSize + 2));
+
+            const gridSize = width * height;
+
+            const grid = new Int8Array(gridSize);
+            grid.fill(-1);
+
+            const directions = [
+                [-1, 0], [1, 0], [0, -1], [0, 1]
+            ];
+
+            const startX = Math.floor(Math.random() * width);
+            const startY = Math.floor(Math.random() * height);
+            let currentColor = Math.floor(Math.random() * 3);
+
+            const queue = [];
+            queue.push([startX, startY]);
+            grid[startY * width + startX] = currentColor;
+
+            while (queue.length > 0) {
+                const [x, y] = queue.shift();
+                for (const [dx, dy] of directions) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                        const nIdx = ny * width + nx;
+                        if (grid[nIdx] === -1) {
+                            if (Math.random() < 0.7) {
+                                grid[nIdx] = grid[y * width + x];
+                            } else {
+                                let newColor;
+                                do {
+                                    newColor = Math.floor(Math.random() * 3);
+                                } while (newColor === grid[y * width + x]);
+                                grid[nIdx] = newColor;
+                            }
+                            queue.push([nx, ny]);
+                        }
+                    }
+                }
+            }
+
+            const oldGrid = document.getElementById("grid");
+            const gridElement = oldGrid.cloneNode(false);
+            oldGrid.parentNode.replaceChild(gridElement, oldGrid);
+
+            gridElement.style.gridTemplateColumns = `repeat(${width}, ${cellSize}px)`;
+
+            // Create cells
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const div = document.createElement("div");
+                    div.className = "cell";
+                    div.dataset.x = x;
+                    div.dataset.y = y;
+                    gridElement.appendChild(div);
+                }
+            }
+
+            // Vibrant colors
+            const colors = ["#ff4d4d", "#4dff88", "#4da6ff", "#ffff66"];
+
+            function render() {
+                const cells = gridElement.children;
+                for (let i = 0; i < gridSize; i++) {
+                    const cellColor = grid[i] === 3 ? 3 : grid[i];
+                    cells[i].style.background = colors[cellColor];
+                }
+            }
+
+            render();
+
+            gridElement.addEventListener("click", (e) => {
+                const target = e.target;
+                if (!target.classList.contains("cell")) return;
+
+                const x = parseInt(target.dataset.x);
+                const y = parseInt(target.dataset.y);
+
+                const positions = compute_smart_fill(grid, width, height, x, y);
+                const coords = [];
+                for (let i = 0; i < positions.length; i += 2) {
+                    coords.push([positions[i], positions[i + 1]]);
+                }
+
+                let step = 0;
+                let previousActive = null;
+
+                function animate() {
+                    if (step >= coords.length) return;
+
+                    const [cx, cy] = coords[step];
+                    grid[cy * width + cx] = 3;
+                    render();
+
+                    const index = cy * width + cx;
+                    const cells = gridElement.children;
+
+                    // Remove active class from previous cell
+                    if (previousActive !== null) {
+                        cells[previousActive].classList.remove("active");
+                    }
+
+                    // Add active class to current cell
+                    cells[index].classList.add("active");
+                    previousActive = index;
+
+                    step++;
+                    setTimeout(animate, 15);
+                }
+
+                animate();
+            });
+        }
+
+        run();
+
+        document.getElementById("resetButton").addEventListener("click", () => {
+            run();
+        });
+    </script>
+</body>
+
+</html>
